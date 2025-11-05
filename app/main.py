@@ -30,23 +30,33 @@ else:
 # UPLOAD / LEITURA DOS DADOS
 # =========================
 st.header("📂 Carregar Base de Dados")
+st.write("🚀 Iniciando leitura da base...")
+
+try:
+    base_padrao = os.path.join("data", "base_de_dados.xlsx")
+    st.write(f"🔍 Verificando arquivo em: {base_padrao}")
+
+    if os.path.exists(base_padrao):
+        st.write("📁 Arquivo encontrado, tentando abrir...")
+        df = pd.read_excel(base_padrao, engine="openpyxl")
+        st.success("✅ Base carregada com sucesso!")
+        st.dataframe(df.head())
+    else:
+        st.error("❌ Arquivo não encontrado na pasta /data.")
+        st.stop()
+except Exception as e:
+    st.error(f"❌ Erro ao carregar o arquivo Excel: {e}")
+    st.stop()
+
 arquivo = st.file_uploader("Selecione um arquivo Excel (.xlsx)", type=["xlsx"])
 
 if arquivo:
     df = pd.read_excel(arquivo)
 else:
-    base_padrao = os.path.join("data", "base_de_dados.xlsx")
+    base_padrao = "data/base_de_dados.xlsx"
     if os.path.exists(base_padrao):
-        try:
-            df = pd.read_excel(base_padrao, engine="openpyxl")
-            st.info(f"Usando base padrão existente: {base_padrao}")
-        except Exception as e:
-            st.error(f"❌ Erro ao abrir a base de dados: {e}")
-            st.stop()
-    else:
-        st.warning("⚠️ Arquivo 'base_de_dados.xlsx' não encontrado na pasta /data.")
-        st.stop()
-
+        df = pd.read_excel(base_padrao)
+        st.info("Usando base padrão existente.")
     else:
         st.warning("Envie um arquivo .xlsx para continuar.")
         st.stop()
