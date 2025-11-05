@@ -20,7 +20,8 @@ def carregar_dados(caminho_arquivo=None):
         raise FileNotFoundError(f"❌ Arquivo não encontrado: {caminho_arquivo}")
 
     # Carrega a planilha
-    df = pd.read_excel(caminho_arquivo)
+    df = pd.read_excel(caminho_arquivo, engine="openpyxl")
+
 
     # Padroniza nomes das colunas
     df.columns = [col.strip().lower().replace(' ', '_') for col in df.columns]
