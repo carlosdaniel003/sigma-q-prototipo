@@ -13,8 +13,32 @@ st.title("📊 SIGMA-Q - Dashboard de Defeitos na Linha de Montagem")
 st.markdown("Monitoramento inteligente e classificação automática de defeitos")
 
 # =========================
-# CARREGAR MODELO E VETORIZADOR
+# LEITURA LOCAL DO EXCEL
 # =========================
+st.header("📂 Leitura da Base de Dados Local")
+
+base_padrao = os.path.join("data", "base_de_dados.xlsx")
+st.write(f"📁 Procurando arquivo em: `{base_padrao}`")
+
+if os.path.exists(base_padrao):
+    try:
+        st.write("🚀 Iniciando leitura da base...")
+        df = pd.read_excel(base_padrao, engine="openpyxl")
+        st.success(f"✅ Dados carregados de: {base_padrao}")
+        st.info(f"📊 Total de linhas: {len(df)}")
+        st.dataframe(df, use_container_width=True)
+    except Exception as e:
+        st.error(f"❌ Erro ao ler o arquivo Excel: {e}")
+        st.stop()
+else:
+    st.error("❌ Arquivo `base_de_dados.xlsx` não encontrado em `/data`.")
+    st.stop()
+
+# =========================
+# CLASSIFICAÇÃO AUTOMÁTICA
+# =========================
+st.header("🤖 Classificação Automática")
+
 modelo_path = "model/modelo_classificacao.pkl"
 vetorizador_path = "model/vectorizer.pkl"
 
@@ -23,46 +47,19 @@ if os.path.exists(modelo_path) and os.path.exists(vetorizador_path):
     vetorizador = joblib.load(vetorizador_path)
     st.sidebar.success("✅ Modelo carregado com sucesso!")
 else:
-    st.sidebar.error("❌ Modelo não encontrado! Execute o script de treino primeiro.")
+    st.sidebar.error("❌ Modelo não encontrado! Execute o treino primeiro.")
     st.stop()
 
-# =========================
-# UPLOAD / LEITURA DOS DADOS
-# =========================
-st.header("📂 Carregar Base de Dados")
-st.write("🚀 Iniciando leitura da base...")
-
-try:
-    base_padrao = os.path.join("data", "base_de_dados.xlsx")
-    st.write(f"🔍 Verificando arquivo em: {base_padrao}")
-
-    if os.path.exists(base_padrao):
-        st.write("📁 Arquivo encontrado, tentando abrir...")
-        df = pd.read_excel(base_padrao, engine="openpyxl")
-        st.success("✅ Base carregada com sucesso!")
-        st.dataframe(df.head())
-    else:
-        st.error("❌ Arquivo não encontrado na pasta /data.")
-        st.stop()
-except Exception as e:
-    st.error(f"❌ Erro ao carregar o arquivo Excel: {e}")
-    st.stop()
-
-arquivo = st.file_uploader("Selecione um arquivo Excel (.xlsx)", type=["xlsx"])
-
-if arquivo:
-    df = pd.read_excel(arquivo)
+if "DESCRIÇÃO DA FALHA" in df.columns:
+    descricoes = df["DESCRIÇÃO DA FALHA"].astype(str)
+    X_tfidf = vetorizador.transform(descricoes)
+    predicoes = modelo.predict(X_tfidf)
+    df["CATEGORIA_PREDITA"] = predicoes
+    st.success("✅ Classificação concluída!")
+    st.dataframe(df[["DESCRIÇÃO DA FALHA", "CATEGORIA_PREDITA"]], use_container_width=True)
 else:
-    base_padrao = "data/base_de_dados.xlsx"
-    if os.path.exists(base_padrao):
-        df = pd.read_excel(base_padrao)
-        st.info("Usando base padrão existente.")
-    else:
-        st.warning("Envie um arquivo .xlsx para continuar.")
-        st.stop()
+    st.warning("⚠️ A coluna 'DESCRIÇÃO DA FALHA' não foi encontrada no arquivo.")
 
-st.write("### Visualização da Base de Dados:")
-st.dataframe(df.head(), use_container_width=True)
 
 # =========================
 # CLASSIFICAÇÃO AUTOMÁTICA
