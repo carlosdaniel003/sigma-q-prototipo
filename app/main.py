@@ -7,12 +7,17 @@ import os
 import sys
 import os
 
+import matplotlib.pyplot as plt  # (adicione no topo do arquivo, se ainda não tiver)
+
+
 # Adiciona a pasta raiz ao caminho do Python
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.atualizador import carregar_base, monitorar_base
 from utils.logger import registrar_classificacoes
 from utils.auto_updater import verificar_atualizacao
+
+
 
 ultima_modificacao = os.path.getmtime("data/base_de_dados.xlsx")
 atualizado, ultima_modificacao = verificar_atualizacao("data/base_de_dados.xlsx", ultima_modificacao)
@@ -283,3 +288,71 @@ if st.button("Salvar base classificada"):
     saida = "data/base_classificada.xlsx"
     df.to_excel(saida, index=False)
     st.success(f"📁 Base salva em: `{saida}`")
+
+   # =========================
+# RELATÓRIOS TÉCNICOS (ETAPA 7.1)
+# =========================
+st.header("📊 Relatórios Técnicos de Produção")
+
+if "CATEGORIA_PREDITA" in df.columns:
+    tab1, tab2, tab3 = st.tabs(["📈 Visão Geral", "📦 Por Modelo", "🔍 Análises Detalhadas"])
+# --- 📈 Visão Geral ---
+with tab1:
+    st.subheader("📊 Distribuição de Ocorrências por Categoria e Modelo")
+
+    # Cria layout em colunas
+    col1, col2 = st.columns([2, 1])
+
+    # ----- COLUNA 1 → GRÁFICO DE BARRAS -----
+    with col1:
+        st.markdown("### 📦 Quantidade de Ocorrências por Categoria")
+        st.bar_chart(df["CATEGORIA_PREDITA"].value_counts())
+
+    # ----- COLUNA 2 → GRÁFICO DE PIZZA -----
+    with col2:
+        st.markdown("### 🥧 Proporção de Ocorrências")
+        cat_counts = df["CATEGORIA_PREDITA"].value_counts()
+
+        import matplotlib.pyplot as plt
+        colors = plt.cm.tab20.colors
+        explode = [0.05 if i == 0 else 0.02 for i in range(len(cat_counts))]
+
+        fig, ax = plt.subplots(figsize=(4, 4), facecolor="#0e1117")
+        wedges, texts, autotexts = ax.pie(
+            cat_counts,
+            autopct="%1.1f%%",
+            startangle=90,
+            colors=colors,
+            pctdistance=0.8,
+            explode=explode,
+            wedgeprops={"edgecolor": "white", "linewidth": 1, "antialiased": True},
+            textprops={"fontsize": 9, "color": "white", "weight": "bold"}
+        )
+
+        ax.set_title("Proporção de Ocorrências por Categoria", fontsize=11, color="white", pad=12)
+        ax.legend(cat_counts.index, title="Categorias", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+        ax.set_aspect("equal")
+        st.pyplot(fig)
+
+# --- 📦 Por Modelo ---
+with tab2:
+    st.subheader("Distribuição de Defeitos por Modelo")
+    if "MODELO" in df.columns:
+        st.bar_chart(df.groupby("MODELO")["CATEGORIA_PREDITA"].count())
+        st.write("Top 5 modelos com mais ocorrências:")
+        st.table(df["MODELO"].value_counts().head(5))
+    else:
+        st.warning("⚠️ Coluna 'MODELO' não encontrada na base.")
+
+# --- 🔍 Análises Detalhadas ---
+with tab3:
+    st.subheader("Top 5 defeitos mais recorrentes")
+    top_defeitos = df["CATEGORIA_PREDITA"].value_counts().head(5)
+    st.table(top_defeitos)
+
+    if "data" in df.columns:
+        st.subheader("📅 Evolução Temporal de Ocorrências")
+        df["data"] = pd.to_datetime(df["data"], errors="coerce")
+        st.line_chart(df.groupby("data")["CATEGORIA_PREDITA"].count())
+    else:
+        st.info("ℹ️ Nenhuma coluna de data encontrada para gerar gráfico temporal.")
