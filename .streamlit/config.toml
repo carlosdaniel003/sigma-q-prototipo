@@ -3,16 +3,12 @@ headless = true
 port = 8501
 enableCORS = false
 enableXsrfProtection = false
-fileWatcherType = "none"
 
 [theme]
 primaryColor = "#00BFFF"
 backgroundColor = "#0E1117"
 secondaryBackgroundColor = "#262730"
 textColor = "#FAFAFA"
-
-[runner]
-magicEnabled = true
 
 [client]
 showErrorDetails = true
