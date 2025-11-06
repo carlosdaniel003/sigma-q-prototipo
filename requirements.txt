@@ -1,6 +1,1 @@
-streamlit
-pandas
-scikit-learn
-spacy
-joblib
-openpyxl
+-r requirements_core.txt
