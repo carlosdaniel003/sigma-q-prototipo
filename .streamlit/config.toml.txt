@@ -1,4 +1,0 @@
-[server]
-headless = true
-fileWatcherType = "auto"
-scriptPath = "app/main.py"
