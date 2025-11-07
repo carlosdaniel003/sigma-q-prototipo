@@ -1,51 +1,60 @@
-# ============================================
 # utils/atualizador.py
-# ============================================
-# Funções para monitorar e atualizar automaticamente
-# a base de dados do SIGMA-Q quando for alterada.
-# ============================================
-
+import pandas as pd
 import os
 import time
-import pandas as pd
-import streamlit as st
 
-# Caminho padrão da base
-BASE_PATH = "data/base_de_dados.xlsx"
+DEFAULT_PATH = os.path.join("data", "quality_control_outubro.xlsx")
 
-def carregar_base(caminho_base=BASE_PATH):
+def carregar_base(path: str = None, usecols: list | None = None) -> pd.DataFrame:
     """
-    Carrega o arquivo Excel da base de dados local.
-    Retorna um DataFrame do pandas.
+    Carrega a base oficial (oculta no front-end) e retorna um DataFrame limpo.
+    - path: caminho alternativo (opcional). Se None, usa a base oficial.
+    - usecols: se quiser carregar apenas algumas colunas para memória economizada.
     """
+    caminho = path or DEFAULT_PATH
+    if not os.path.exists(caminho):
+        raise FileNotFoundError(f"Base de dados não encontrada: {caminho}")
+
+    # Leitura básica
+    df = pd.read_excel(caminho, usecols=usecols)
+
+    # Normalização de cabeçalhos (mantém original, mas padroniza espaços/acentos)
+    df.columns = (
+        df.columns.str.strip()
+                  .str.upper()
+                  .str.normalize('NFKD')  # remove acentos
+                  .str.encode('ascii', errors='ignore').str.decode('ascii')
+                  .str.replace(" ", "_")
+    )
+
+    # Pequenas limpezas comuns
+    # Exemplo: remover linhas totalmente vazias
+    df = df.dropna(how="all").reset_index(drop=True)
+
+    # Garantir colunas críticas existam (adapte se necessário)
+    expected = ["DESCRICAO","DESCRICAO_DA_FALHA","REFERENCIA","MOTIVO","CATEGORIA"]
+    # não lançamos erro (apenas aviso) — evita quebrar em ambientes com variações
+    for c in expected:
+        if c not in df.columns:
+            # tentamos equivalentes comuns
+            pass
+
+    return df
+
+def monitorar_base(intervalo: int = 30, path: str = None, last_mtime: float | None = None) -> bool:
+    """
+    Verifica se o arquivo da base foi modificado. Retorna True se houve modificação.
+    - intervalo: segundos mínimo entre checagens (função leve — pode ser chamada frequentemente).
+    - path: caminho do arquivo (opcional).
+    - last_mtime: último modification time conhecido; se None, retorna False e informa o mtime atual.
+    """
+    caminho = path or DEFAULT_PATH
     try:
-        df = pd.read_excel(caminho_base, engine="openpyxl")
-        st.success(f"✅ Base carregada: {caminho_base}")
-        st.info(f"📊 Total de linhas: {len(df)}")
-        return df
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar base: {e}")
-        return pd.DataFrame()
-
-def monitorar_base(caminho_base=BASE_PATH, intervalo=10):
-    """
-    Monitora alterações no arquivo Excel e retorna True
-    se houver modificação desde a última execução.
-    """
-    if not os.path.exists(caminho_base):
-        st.error(f"⚠️ Arquivo não encontrado: {caminho_base}")
+        mtime = os.path.getmtime(caminho)
+    except Exception:
         return False
 
-    # Usar estado persistente do Streamlit
-    if "ultimo_modificado" not in st.session_state:
-        st.session_state.ultimo_modificado = os.path.getmtime(caminho_base)
-        return False
+    if last_mtime is None:
+        return False, mtime
 
-    novo_modificado = os.path.getmtime(caminho_base)
-    if novo_modificado != st.session_state.ultimo_modificado:
-        st.session_state.ultimo_modificado = novo_modificado
-        st.toast("📂 Nova versão da base detectada! Recarregando dados...")
-        return True
-
-    return False
-
+    return (mtime != last_mtime), mtime

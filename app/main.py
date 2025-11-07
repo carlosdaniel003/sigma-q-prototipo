@@ -140,23 +140,29 @@ st.title("📊 SIGMA-Q - Dashboard de Defeitos na Linha de Montagem")
 st.markdown("Monitoramento inteligente e classificação automática de defeitos")
 
 # =========================
-# LEITURA LOCAL DO EXCEL (com atualização automática)
+# LEITURA LOCAL DO EXCEL (USANDO A BASE OFICIAL, OCULTA)
 # =========================
-st.header("📂 Leitura da Base de Dados Local")
+st.header("📂 Status da Base de Dados (oculta)")
 
-with st.spinner("📥 Carregando base de dados..."):
-    df = carregar_base()
+with st.spinner("📥 Carregando base oficial (oculta)..."):
+    # Carrega apenas colunas necessárias para análises e IA — evita expor dados brutos
+    # ajuste usecols conforme seu espaço / necessidade
+    usecols = None  # Ex: ["DATA","MÊS","DESCRIÇÃO_DA_FALHA","MODELO","CATEGORIA","REFERENCIA","MOTIVO"]
+    df = carregar_base(path=None, usecols=usecols)
 
+# NÃO exibir df completo no front-end!
+st.info("🔒 Base oficial carregada internamente. Dados linha-a-linha não são exibidos por política de privacidade.")
 
-st.dataframe(df, use_container_width=True)
+# Apenas mostrar uma amostra reduzida (por exemplo, 5 linhas) para debug — opcional e pode ficar desativada.
+if st.checkbox("Mostrar amostra segura (5 linhas) - uso interno", value=False):
+    st.dataframe(df.head(5), use_container_width=True)
 
-# Botão de atualização manual
-if st.button("🔁 Atualizar Base de Dados"):
-    with st.spinner("🔄 Atualando dados..."):
-        df = carregar_base()
-
-    st.dataframe(df, use_container_width=True)
-    st.toast("✅ Base recarregada manualmente!")
+# Mostrar somentes agregados/contagens úteis para o usuário
+st.subheader("🔎 Visão resumida (agregados)")
+col1, col2, col3 = st.columns(3)
+col1.metric("Total de Registros (Base oficial)", len(df))
+col2.metric("Categorias distintas", df["CATEGORIA"].nunique() if "CATEGORIA" in df.columns else "N/A")
+col3.metric("Motivos distintos", df["MOTIVO"].nunique() if "MOTIVO" in df.columns else "N/A")
 
 # Verificação automática (em segundo plano)
 if monitorar_base(intervalo=15):
@@ -164,10 +170,20 @@ if monitorar_base(intervalo=15):
 
 from utils.text_processor import preprocessar_dataframe
 
-# Pré-processa as descrições antes de classificar
-df = preprocessar_dataframe(df, coluna_texto="DESCRIÇÃO DA FALHA")
-st.write("🧹 Textos pré-processados (coluna 'TEXTO_PROCESSADO'):")
-st.dataframe(df[["DESCRIÇÃO DA FALHA", "TEXTO_PROCESSADO"]])
+# Garantir nome de coluna correto (tolerância a variações)
+col_ops = ["DESCRICAO_DA_FALHA", "DESCRIÇÃO_DA_FALHA", "DESCRICAO", "DESCRICAO_DA_FALHA"]
+col_text = None
+for c in col_ops:
+    if c in df.columns:
+        col_text = c
+        break
+
+if col_text:
+    df = preprocessar_dataframe(df, coluna_texto=col_text)
+    if st.checkbox("Mostrar preview de textos processados", value=False):
+        st.dataframe(df[[col_text, "TEXTO_PROCESSADO"]].head(5))
+else:
+    st.warning("⚠️ Coluna de texto para pré-processamento não encontrada.")
 
 
 # =========================
@@ -186,6 +202,19 @@ df.columns = (
               .str.replace("Õ", "O")
               .str.replace(" ", "_")
 )
+
+# Após previsão
+df["CATEGORIA_PREDITA"] = predicoes
+
+# Mostrar apenas contagens e top 5 exemplos (por segurança, limitamos)
+st.success("✅ Classificação concluída com sucesso!")
+st.subheader("Top categorias previstas")
+st.table(df["CATEGORIA_PREDITA"].value_counts().head(10))
+
+st.subheader("Exemplos (segurança) — 3 amostras por categoria")
+sample_preview = df.groupby("CATEGORIA_PREDITA").head(3)[[col_text, "CATEGORIA_PREDITA"]]
+st.table(sample_preview)
+
 
 # =========================
 # TREINAMENTO DIRETO PELO PAINEL
