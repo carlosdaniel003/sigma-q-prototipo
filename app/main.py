@@ -156,7 +156,14 @@ with st.spinner("📥 Carregando base oficial (oculta)..."):
     # Carrega apenas colunas necessárias para análises e IA — evita expor dados brutos
     # ajuste usecols conforme seu espaço / necessidade
     usecols = None  # Ex: ["DATA","MÊS","DESCRIÇÃO_DA_FALHA","MODELO","CATEGORIA","REFERENCIA","MOTIVO"]
+    try:
     df = carregar_base(path=None, usecols=usecols)
+except Exception as e:
+    import traceback
+    st.error("❌ Erro ao carregar base:")
+    st.code(traceback.format_exc())
+    st.stop()
+
 
     # =========================
 # TREINAMENTO AUTOMÁTICO DO MODELO (se não existir)
