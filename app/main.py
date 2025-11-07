@@ -1,3 +1,4 @@
+from utils.atualizador import carregar_base
 import streamlit as st
 import pandas as pd
 import joblib
