@@ -1,14 +1,24 @@
+# =========================
+# SIGMA-Q DASHBOARD PRINCIPAL
+# =========================
 import streamlit as st
-st.caption("🚀 Build SIGMA-Q 2025-11-07-Rev3")
 import pandas as pd
 import joblib
+import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
-import os
+import sys, os
 
-import sys
-import os
+# Identificação da build atual
+st.caption("🚀 Build SIGMA-Q 2025-11-07-Rev3")
 
-import matplotlib.pyplot as plt  # (adicione no topo do arquivo, se ainda não tiver)
+# Garante que o diretório raiz do projeto (pai de /app) esteja no sys.path
+# Isso permite importar os módulos de /utils/ corretamente no Streamlit Cloud
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# Importações internas do SIGMA-Q
+from utils.atualizador import carregar_base, monitorar_base
+from utils.logger import registrar_classificacoes
+from utils.model_manager import carregar_modelos, verificar_modelos
 
 
 # Adiciona a pasta raiz ao caminho do Python
