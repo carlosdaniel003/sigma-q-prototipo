@@ -8,39 +8,32 @@ import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 import sys, os
 
-# Identificação da build atual
 st.caption("🚀 Build SIGMA-Q 2025-11-07-Rev3")
 
-# --- Corrige caminho para pacotes locais (garante que /utils seja visível mesmo em Cloud) ---
+# --- Corrige caminho raiz do projeto ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-
-# Garante que o diretório raiz do projeto (pai de /app) esteja no sys.path
-# Isso permite importar os módulos de /utils/ corretamente no Streamlit Cloud
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# Importações internas do SIGMA-Q
-from utils.atualizador_temp import carregar_base, monitorar_base
-
+# --- Importações internas do SIGMA-Q ---
+from utils.atualizador import carregar_base, monitorar_base
 from utils.logger import registrar_classificacoes
 from utils.model_manager import carregar_modelos, verificar_modelos
-
+from utils.auto_updater import verificar_atualizacao
 
 # Adiciona a pasta raiz ao caminho do Python
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.atualizador_temp import carregar_base, monitorar_base
+from utils.atualizador import carregar_base, monitorar_base
 from utils.logger import registrar_classificacoes
 from utils.auto_updater import verificar_atualizacao
 
 
 
 # Verifica alterações na base oficial do Quality Control
-if os.path.exists("data/quality_control_outubro.xlsx"):
-    ultima_modificacao = os.path.getmtime("data/quality_control_outubro.xlsx")
-    atualizado, ultima_modificacao = verificar_atualizacao("data/quality_control_outubro.xlsx", ultima_modificacao)
+if os.path.exists("data/base_de_dados_unificada.xlsx"):
+    ultima_modificacao = os.path.getmtime("data/base_de_dados_unificada.xlsx")
+    atualizado, ultima_modificacao = verificar_atualizacao("data/base_de_dados_unificada.xlsx", ultima_modificacao)
 
 else:
     ultima_modificacao = None
@@ -68,7 +61,7 @@ st.sidebar.markdown("Gerenciamento e status do sistema SIGMA-Q")
 st.sidebar.header("📊 Status do Sistema")
 
 # Verifica a base oficial
-base_ok = os.path.exists("data/quality_control_outubro.xlsx")
+base_ok = os.path.exists("data/base_de_dados_unificada.xlsx")
 
 modelo_ok = os.path.exists("model/modelo_classificacao.pkl")
 vet_ok = os.path.exists("model/vectorizer.pkl")
@@ -95,7 +88,7 @@ st.sidebar.header("📈 Indicadores")
 
 # Última atualização
 if base_ok:
-    data_mod = pd.Timestamp(os.path.getmtime("data/quality_control_outubro.xlsx"), unit="s")
+    data_mod = pd.Timestamp(os.path.getmtime("data/base_de_dados_unificada.xlsx"), unit="s")
     st.sidebar.metric("Última atualização da base", data_mod.strftime("%d/%m/%Y %H:%M"))
 
 # Histórico de acurácia
@@ -147,7 +140,7 @@ st.sidebar.divider()
 st.sidebar.subheader("📡 Status do Sistema")
 
 # Status da base
-if os.path.exists("data/quality_control_outubro.xlsx"):
+if os.path.exists("data/base_de_dados_unificada.xlsx"):
     st.sidebar.success("📘 Base de dados carregada")
 else:
     st.sidebar.warning("⚠️ Base ausente")
@@ -178,7 +171,7 @@ with st.spinner("📥 Carregando base oficial (oculta)..."):
 # CARREGAMENTO DA BASE DE DADOS (com debug)
 # =========================
 try:
-    df = carregar_base(path=None, usecols=usecols)
+    df = carregar_base(usecols=usecols)
 except Exception as e:
     import traceback
     st.error("❌ Erro ao carregar base:")

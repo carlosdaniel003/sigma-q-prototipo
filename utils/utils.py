@@ -4,16 +4,16 @@ import os
 def carregar_dados(caminho_arquivo=None):
     """
     Carrega o arquivo Excel da base de dados e retorna um DataFrame limpo.
-    Se nenhum caminho for informado, tenta localizar automaticamente 'quality_control_outubro.xlsx'
+    Se nenhum caminho for informado, tenta localizar automaticamente 'base_de_dados_unificada.xlsx'
     dentro da pasta do projeto.
     """
     # Caminho padrão (caso o usuário não informe)
     if caminho_arquivo is None:
-        caminho_arquivo = os.path.join(os.getcwd(), "data", "quality_control_outubro.xlsx")
+        caminho_arquivo = os.path.join(os.getcwd(), "data", "base_de_dados_unificada.xlsx")
 
         # Se não existir dentro de /data, tenta na raiz do projeto
         if not os.path.exists(caminho_arquivo):
-            caminho_arquivo = os.path.join(os.getcwd(), "quality_control_outubro.xlsx")
+            caminho_arquivo = os.path.join(os.getcwd(), "base_de_dados_unificada.xlsx")
 
     # Verifica se o arquivo existe
     if not os.path.exists(caminho_arquivo):

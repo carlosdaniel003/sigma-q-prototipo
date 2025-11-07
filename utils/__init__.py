@@ -1,2 +1,2 @@
 # utils/__init__.py
-# Identifica a pasta utils como pacote Python
+# Este arquivo identifica 'utils' como um pacote Python.

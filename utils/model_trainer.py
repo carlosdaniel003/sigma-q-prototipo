@@ -9,7 +9,7 @@ from sklearn.pipeline import Pipeline
 import streamlit as st
 
 # Caminho oficial da base do SIGMA-Q
-BASE_PATH = os.path.join("data", "quality_control_outubro.xlsx")
+BASE_PATH = os.path.join("data", "base_de_dados_unificada.xlsx")
 MODEL_PATH = os.path.join("model", "modelo_classificacao.pkl")
 VECTORIZER_PATH = os.path.join("model", "vectorizer.pkl")
 
