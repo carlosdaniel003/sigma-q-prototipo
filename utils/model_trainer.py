@@ -1,76 +1,87 @@
-# ============================================
 # utils/model_trainer.py
-# ============================================
-# Função de treinamento do modelo SIGMA-Q com feedback visual para o Streamlit
-# ============================================
-
 import pandas as pd
 import joblib
 import os
-import streamlit as st
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-import spacy
+from sklearn.pipeline import Pipeline
+import streamlit as st
 
-def treinar_modelo(base_path="data/base_de_dados.xlsx"):
+# Caminho oficial da base do SIGMA-Q
+BASE_PATH = os.path.join("data", "quality_control_outubro.xlsx")
+MODEL_PATH = os.path.join("model", "modelo_classificacao.pkl")
+VECTORIZER_PATH = os.path.join("model", "vectorizer.pkl")
+
+
+def treinar_modelo():
     """
-    Treina o modelo de classificação SIGMA-Q com base na planilha local.
-    Retorna o modelo e o vetorizador treinados.
+    Treina o modelo de IA SIGMA-Q com base na planilha Quality Control.
     """
+    if not os.path.exists(BASE_PATH):
+        st.error(f"❌ Arquivo não encontrado: {BASE_PATH}")
+        return None, None
 
     st.info("🚀 Iniciando treinamento do modelo SIGMA-Q...")
 
-    if not os.path.exists(base_path):
-        st.error(f"❌ Arquivo não encontrado: {base_path}")
+    try:
+        # Carregar a planilha oficial
+        df = pd.read_excel(BASE_PATH)
+        df.columns = (
+            df.columns.str.strip()
+            .str.upper()
+            .str.normalize("NFKD")
+            .str.encode("ascii", errors="ignore")
+            .str.decode("ascii")
+            .str.replace(" ", "_")
+        )
+
+        # Detecta a coluna de texto
+        texto_col = None
+        for c in ["DESC_FALHA", "DESC._FALHA", "DESCRICAO_DA_FALHA", "DESCRICAO"]:
+            if c in df.columns:
+                texto_col = c
+                break
+
+        if not texto_col:
+            st.error("⚠️ Nenhuma coluna de texto (descrição de falha) encontrada na base.")
+            return None, None
+
+        # Detecta a coluna de rótulo
+        if "CATEGORIA" not in df.columns:
+            st.error("⚠️ Coluna 'CATEGORIA' não encontrada na base.")
+            return None, None
+
+        # Remove linhas inválidas
+        df = df.dropna(subset=[texto_col, "CATEGORIA"])
+        df = df[df[texto_col].astype(str).str.strip() != ""]
+
+        # Divisão treino/teste
+        X_train, X_test, y_train, y_test = train_test_split(
+            df[texto_col], df["CATEGORIA"], test_size=0.2, random_state=42
+        )
+
+        # Cria pipeline de vetor + modelo
+        pipeline = Pipeline([
+            ("tfidf", TfidfVectorizer(max_features=5000, ngram_range=(1, 2))),
+            ("clf", LogisticRegression(max_iter=1000, solver="lbfgs", multi_class="auto")),
+        ])
+
+        # Treinamento
+        pipeline.fit(X_train, y_train)
+
+        # Avaliação rápida
+        score = pipeline.score(X_test, y_test)
+        st.success(f"✅ Treinamento concluído — acurácia: {score*100:.2f}%")
+
+        # Salvar modelo e vetor
+        os.makedirs("model", exist_ok=True)
+        joblib.dump(pipeline, MODEL_PATH)
+        joblib.dump(pipeline.named_steps["tfidf"], VECTORIZER_PATH)
+
+        st.toast("💾 Modelo e vetorizador salvos com sucesso!")
+        return pipeline.named_steps["clf"], pipeline.named_steps["tfidf"]
+
+    except Exception as e:
+        st.error(f"❌ Erro durante o treinamento: {e}")
         return None, None
-
-    # Carrega dados
-    df = pd.read_excel(base_path, engine="openpyxl")
-
-    if "DESCRIÇÃO DA FALHA" not in df.columns or "CATEGORIA" not in df.columns:
-        st.error("⚠️ Colunas obrigatórias não encontradas ('DESCRIÇÃO DA FALHA' e 'CATEGORIA').")
-        return None, None
-
-    # Pré-processamento
-    df.dropna(subset=["DESCRIÇÃO DA FALHA", "CATEGORIA"], inplace=True)
-    df["DESCRIÇÃO DA FALHA"] = df["DESCRIÇÃO DA FALHA"].astype(str)
-
-    # NLP básico com spaCy
-    nlp = spacy.load("pt_core_news_sm")
-    df["texto_limpo"] = df["DESCRIÇÃO DA FALHA"].apply(lambda x: " ".join([t.lemma_ for t in nlp(x.lower()) if not t.is_stop]))
-
-    st.progress(10)
-
-    # Vetorização TF-IDF
-    vetorizador = TfidfVectorizer(max_features=500)
-    X = vetorizador.fit_transform(df["texto_limpo"])
-    y = df["CATEGORIA"]
-
-    st.progress(40)
-
-    # Divide dados para treino e teste
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Treina o modelo
-    modelo = LogisticRegression(max_iter=1000)
-    modelo.fit(X_train, y_train)
-
-    st.progress(80)
-
-    # Avaliação
-    y_pred = modelo.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    st.success(f"✅ Treinamento concluído com acurácia de {acc:.2%}")
-
-    # Salva os modelos
-    os.makedirs("model", exist_ok=True)
-    joblib.dump(modelo, "model/modelo_classificacao.pkl")
-    joblib.dump(vetorizador, "model/vectorizer.pkl")
-
-    st.progress(100)
-    st.toast("💾 Modelo e vetorizador salvos com sucesso!")
-    st.info(f"📁 Caminho: model/modelo_classificacao.pkl")
-
-    return modelo, vetorizador

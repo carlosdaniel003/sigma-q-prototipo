@@ -1,4 +1,3 @@
-from utils.atualizador import carregar_base
 import streamlit as st
 import pandas as pd
 import joblib
@@ -20,8 +19,15 @@ from utils.auto_updater import verificar_atualizacao
 
 
 
-ultima_modificacao = os.path.getmtime("data/base_de_dados.xlsx")
-atualizado, ultima_modificacao = verificar_atualizacao("data/base_de_dados.xlsx", ultima_modificacao)
+# Verifica alterações na base oficial do Quality Control
+if os.path.exists("data/quality_control_outubro.xlsx"):
+    ultima_modificacao = os.path.getmtime("data/quality_control_outubro.xlsx")
+    atualizado, ultima_modificacao = verificar_atualizacao("data/quality_control_outubro.xlsx", ultima_modificacao)
+
+else:
+    ultima_modificacao = None
+    atualizado = False
+
 
 if atualizado:
     df = carregar_base()
@@ -43,8 +49,9 @@ st.sidebar.markdown("Gerenciamento e status do sistema SIGMA-Q")
 # --- STATUS DO SISTEMA ---
 st.sidebar.header("📊 Status do Sistema")
 
-# Verifica a base
-base_ok = os.path.exists("data/base_de_dados.xlsx")
+# Verifica a base oficial
+base_ok = os.path.exists("data/quality_control_outubro.xlsx")
+
 modelo_ok = os.path.exists("model/modelo_classificacao.pkl")
 vet_ok = os.path.exists("model/vectorizer.pkl")
 log_ok = os.path.exists("data/logs/log_classificacoes.xlsx")
@@ -70,7 +77,7 @@ st.sidebar.header("📈 Indicadores")
 
 # Última atualização
 if base_ok:
-    data_mod = pd.Timestamp(os.path.getmtime("data/base_de_dados.xlsx"), unit="s")
+    data_mod = pd.Timestamp(os.path.getmtime("data/quality_control_outubro.xlsx"), unit="s")
     st.sidebar.metric("Última atualização da base", data_mod.strftime("%d/%m/%Y %H:%M"))
 
 # Histórico de acurácia
@@ -122,7 +129,7 @@ st.sidebar.divider()
 st.sidebar.subheader("📡 Status do Sistema")
 
 # Status da base
-if os.path.exists("data/base_de_dados.xlsx"):
+if os.path.exists("data/quality_control_outubro.xlsx"):
     st.sidebar.success("📘 Base de dados carregada")
 else:
     st.sidebar.warning("⚠️ Base ausente")
@@ -151,6 +158,19 @@ with st.spinner("📥 Carregando base oficial (oculta)..."):
     usecols = None  # Ex: ["DATA","MÊS","DESCRIÇÃO_DA_FALHA","MODELO","CATEGORIA","REFERENCIA","MOTIVO"]
     df = carregar_base(path=None, usecols=usecols)
 
+    # =========================
+# TREINAMENTO AUTOMÁTICO DO MODELO (se não existir)
+# =========================
+from utils.model_manager import verificar_modelos
+from utils.model_trainer import treinar_modelo
+
+if not verificar_modelos():
+    st.info("🧠 Nenhum modelo encontrado — iniciando treinamento automático...")
+    modelo, vetorizador = treinar_modelo()
+    if modelo:
+        st.success("✅ Treinamento automático concluído com sucesso!")
+
+
 # NÃO exibir df completo no front-end!
 st.info("🔒 Base oficial carregada internamente. Dados linha-a-linha não são exibidos por política de privacidade.")
 
@@ -173,8 +193,15 @@ if atualizado:
 from utils.text_processor import preprocessar_dataframe
 
 # Garantir nome de coluna correto (tolerância a variações)
-col_ops = ["DESCRICAO_DA_FALHA", "DESCRIÇÃO_DA_FALHA", "DESCRICAO", "DESCRICAO_DA_FALHA"]
-col_text = None
+col_ops = [
+    "DESCRICAO_DA_FALHA", 
+    "DESCRIÇÃO_DA_FALHA",
+    "DESCRICAO",
+    "DESCRICAO_DA_FALHA",
+    "DESC_FALHA",      # ← versão sem ponto
+    "DESC._FALHA",     # ← versão com ponto (como na sua planilha)
+]
+
 for c in col_ops:
     if c in df.columns:
         col_text = c
@@ -189,13 +216,21 @@ else:
 
 
 # =========================
-# CLASSIFICAÇÃO AUTOMÁTICA
+# 🤖 CLASSIFICAÇÃO AUTOMÁTICA
 # =========================
 st.header("🤖 Classificação Automática")
 
 from utils.model_manager import carregar_modelos, verificar_modelos
 
-# Normaliza as colunas para evitar erros de acentuação
+# Verifica se os modelos estão disponíveis
+if not verificar_modelos():
+    st.warning("⚠️ Nenhum modelo de IA encontrado. Treine o modelo antes de continuar.")
+    st.stop()
+
+# Carrega modelo e vetorizador
+modelo, vetorizador = carregar_modelos()
+
+# Normaliza os nomes das colunas
 df.columns = (
     df.columns.str.strip()
               .str.upper()
@@ -205,59 +240,67 @@ df.columns = (
               .str.replace(" ", "_")
 )
 
-# Após previsão
-df["CATEGORIA_PREDITA"] = predicoes
+# Verifica se existe uma coluna de descrição de falha
+col_text = None
+for c in ["DESCRICAO_DA_FALHA", "DESC_FALHA", "DESC._FALHA", "DESCRICAO"]:
+    if c in df.columns:
+        col_text = c
+        break
 
-# Mostrar apenas contagens e top 5 exemplos (por segurança, limitamos)
+if not col_text:
+    st.warning("⚠️ Nenhuma coluna de texto encontrada para classificação automática.")
+    st.stop()
+
+# =========================
+# EXECUTA A CLASSIFICAÇÃO
+# =========================
+descricoes = df[col_text].astype(str)
+
+with st.spinner("🧠 Classificando falhas..."):
+    try:
+        # Se o modelo for um Pipeline (TF-IDF + Classificador), ele já faz o transform internamente
+        predicoes = modelo.predict(descricoes)
+    except Exception:
+        # Caso o modelo seja apenas o classificador e precise do vetor separadamente
+        X_tfidf = vetorizador.transform(descricoes)
+        predicoes = modelo.predict(X_tfidf)
+
+    # Atribui as previsões ao DataFrame
+    df["CATEGORIA_PREDITA"] = predicoes
+
+# Exibe resultados
 st.success("✅ Classificação concluída com sucesso!")
 st.subheader("Top categorias previstas")
 st.table(df["CATEGORIA_PREDITA"].value_counts().head(10))
 
-st.subheader("Exemplos (segurança) — 3 amostras por categoria")
+
+# Exemplo seguro (até 3 registros por categoria)
+st.subheader("Exemplos (segurança) — até 3 por categoria")
 sample_preview = df.groupby("CATEGORIA_PREDITA").head(3)[[col_text, "CATEGORIA_PREDITA"]]
 st.table(sample_preview)
 
-
 # =========================
-# TREINAMENTO DIRETO PELO PAINEL
+# REGISTRO AUTOMÁTICO DE CLASSIFICAÇÕES
 # =========================
-st.sidebar.header("🧠 Treinamento do Modelo")
+from utils.logger import registrar_classificacoes
 
-if st.sidebar.button("Treinar Modelo de IA", key="btn_treinar_sidebar"):
+try:
+    # Detecta automaticamente a coluna correta de falha
+    col_falha = None
+    for c in ["DESCRICAO_DA_FALHA", "DESC_FALHA", "DESC._FALHA", "DESC. FALHA", "DESCRICAO"]:
+        if c in df.columns:
+            col_falha = c
+            break
 
-    from utils.model_trainer import treinar_modelo
-    modelo, vetorizador = treinar_modelo()
-    if modelo:
-        st.sidebar.success("✅ Modelo treinado com sucesso!")
-        st.rerun()
-
-# Verifica se o modelo existe e carrega
-if verificar_modelos():
-    modelo, vetorizador = carregar_modelos()
-else:
-    st.stop()
-
-# Executa a classificação se a coluna existir
-if "DESCRICAO_DA_FALHA" in df.columns:
-    descricoes = df["DESCRICAO_DA_FALHA"].astype(str)
-
-    with st.spinner("🧠 Classificando falhas..."):
-        X_tfidf = vetorizador.transform(descricoes)
-        predicoes = modelo.predict(X_tfidf)
-        df["CATEGORIA_PREDITA"] = predicoes
-
-    st.success("✅ Classificação concluída com sucesso!")
-    st.dataframe(df[["DESCRICAO_DA_FALHA", "CATEGORIA_PREDITA"]], use_container_width=True)
-
-    # Registrar automaticamente no log
-    try:
-        registrar_classificacoes(df[["DESCRICAO_DA_FALHA", "CATEGORIA_PREDITA"]])
+    if col_falha:
+        # Salva apenas as colunas necessárias
+        registrar_classificacoes(df[[col_falha, "CATEGORIA_PREDITA"]])
         st.toast("📘 Log de classificações atualizado com sucesso.")
-    except Exception as e:
-        st.warning(f"⚠️ Falha ao atualizar log: {e}")
+    else:
+        st.warning("⚠️ Nenhuma coluna de descrição de falha encontrada para registrar log.")
 
-else:
-    st.warning("⚠️ Coluna 'DESCRIÇÃO DA FALHA' (ou equivalente) não encontrada na base de dados.")
+except Exception as e:
+    st.warning(f"⚠️ Falha ao atualizar log: {e}")
 
 # =========================
 # ANÁLISE E VISUALIZAÇÃO
@@ -284,30 +327,97 @@ try:
         col2.metric("Categorias Distintas", df["CATEGORIA_PREDITA"].nunique())
         col3.metric("Última Atualização", pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"))
 
-    # --------------------------
-    # Histórico (logs de classificação)
-    # --------------------------
-    log_path = "data/logs/log_classificacoes.xlsx"
-    if os.path.exists(log_path):
-        st.subheader("🕒 Histórico de Classificações")
+except Exception as e:
+    st.error(f"❌ Erro ao gerar visualizações: {e}")
+
+# =========================
+# 🕒 HISTÓRICO DE CLASSIFICAÇÕES (versão aprimorada)
+# =========================
+import altair as alt
+from datetime import datetime, timedelta
+
+
+log_path = os.path.join("data", "logs", "log_classificacoes.xlsx")
+
+if os.path.exists(log_path):
+    st.subheader("🕒 Histórico de Classificações")
+
+    try:
         log_df = pd.read_excel(log_path)
 
-        # Gráfico temporal
-        if "DATA_LOG" in log_df.columns:
+        # Verifica e converte coluna de data
+        if "DATA_LOG" not in log_df.columns:
+            st.warning("⚠️ A coluna 'DATA_LOG' não foi encontrada no log.")
+        else:
             log_df["DATA_LOG"] = pd.to_datetime(log_df["DATA_LOG"], errors="coerce")
             log_df = log_df.dropna(subset=["DATA_LOG"])
             log_df["DIA"] = log_df["DATA_LOG"].dt.date
 
-            # Contagem diária
-            historico = log_df.groupby("DIA").size()
-            st.line_chart(historico, use_container_width=True)
-        else:
-            st.warning("⚠️ O arquivo de log não possui a coluna DAT LOG.")
-    else:
-        st.info("ℹ️ Nenhum histórico de classificações encontrado ainda.")
+            # Agrupa registros por dia
+            historico = log_df.groupby("DIA").size().reset_index(name="TOTAL")
 
-except Exception as e:
-    st.error(f"❌ Erro ao gerar visualizações: {e}")
+            # Calcula média móvel de 7 dias (se houver dados suficientes)
+            if len(historico) >= 7:
+                historico["MEDIA_MOVEL"] = (
+                    historico["TOTAL"].rolling(window=7, min_periods=1).mean()
+                )
+            else:
+                historico["MEDIA_MOVEL"] = historico["TOTAL"]
+
+            # Define cores dinâmicas conforme volume
+            color_scale = alt.Scale(
+                domain=[historico["TOTAL"].min(), historico["TOTAL"].max()],
+                scheme="blues"
+            )
+
+            # Cria gráfico com Altair
+            chart = (
+                alt.Chart(historico)
+                .mark_bar(size=20)
+                .encode(
+                    x=alt.X("DIA:T", title="Data", axis=alt.Axis(format="%d/%m")),
+                    y=alt.Y("TOTAL:Q", title="Classificações"),
+                    color=alt.Color("TOTAL:Q", scale=color_scale, legend=None),
+                    tooltip=[
+                        alt.Tooltip("DIA:T", title="Data", format="%d/%m/%Y"),
+                        alt.Tooltip("TOTAL:Q", title="Total de Registros"),
+                        alt.Tooltip("MEDIA_MOVEL:Q", title="Média móvel (7 dias)", format=".1f")
+                    ],
+                )
+            )
+
+            # Linha da média móvel
+            line = (
+                alt.Chart(historico)
+                .mark_line(color="orange", strokeWidth=2)
+                .encode(x="DIA:T", y="MEDIA_MOVEL:Q")
+            )
+
+            # Combina gráfico de barras + linha
+            final_chart = (chart + line).properties(
+                width="container",
+                height=300,
+                title="Tendência de Classificações Diárias (com média móvel de 7 dias)",
+            )
+
+            st.altair_chart(final_chart, use_container_width=True)
+
+            # KPIs do histórico
+            st.markdown("### 📊 Indicadores Gerais")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total de Registros", len(log_df))
+            col2.metric("Categorias Distintas", log_df["CATEGORIA_PREDITA"].nunique())
+            col3.metric(
+                "Última Atualização",
+                log_df["DATA_LOG"].max().strftime("%d/%m/%Y %H:%M"),
+            )
+
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar histórico: {e}")
+
+else:
+    st.info("ℹ️ Nenhum histórico de classificações encontrado ainda.")
+
 
 
 # =========================
@@ -368,12 +478,21 @@ with tab1:
 # --- 📦 Por Modelo ---
 with tab2:
     st.subheader("Distribuição de Defeitos por Modelo")
-    if "MODELO" in df.columns:
-        st.bar_chart(df.groupby("MODELO")["CATEGORIA_PREDITA"].count())
-        st.write("Top 5 modelos com mais ocorrências:")
-        st.table(df["MODELO"].value_counts().head(5))
-    else:
-        st.warning("⚠️ Coluna 'MODELO' não encontrada na base.")
+
+# Detecta coluna equivalente ao modelo
+col_modelo = None
+for c in ["MODELO", "DESCRICAO", "DESCRIÇÃO", "CODIGO", "CÓDIGO", "CÓD_PRODUTO"]:
+    if c in df.columns:
+        col_modelo = c
+        break
+
+if col_modelo:
+    st.bar_chart(df.groupby(col_modelo)["CATEGORIA_PREDITA"].count())
+    st.write("Top 5 modelos com mais ocorrências:")
+    st.table(df[col_modelo].value_counts().head(5))
+else:
+    st.warning("⚠️ Nenhuma coluna de modelo ou descrição encontrada na base.")
+
 
 # --- 🔍 Análises Detalhadas ---
 with tab3:
@@ -381,9 +500,29 @@ with tab3:
     top_defeitos = df["CATEGORIA_PREDITA"].value_counts().head(5)
     st.table(top_defeitos)
 
-    if "data" in df.columns:
-        st.subheader("📅 Evolução Temporal de Ocorrências")
-        df["data"] = pd.to_datetime(df["data"], errors="coerce")
-        st.line_chart(df.groupby("data")["CATEGORIA_PREDITA"].count())
+    # =========================
+# ANÁLISES DETALHADAS — EVOLUÇÃO TEMPORAL
+# =========================
+st.subheader("📅 Evolução Temporal de Ocorrências")
+
+# Detecta coluna de data (independente de nome ou formato)
+col_data = None
+for c in df.columns:
+    nome = str(c).strip().upper()
+    if nome in ["DATA", "DT", "DATA_REGISTRO", "DATA_LOG"]:
+        col_data = c
+        break
+
+if col_data:
+    df[col_data] = pd.to_datetime(df[col_data], errors="coerce")
+    df["DIA"] = df[col_data].dt.date
+
+    # Gera gráfico temporal
+    grafico = df.groupby("DIA")["CATEGORIA_PREDITA"].count().reset_index(name="TOTAL")
+
+    if not grafico.empty:
+        st.line_chart(grafico.set_index("DIA"), use_container_width=True)
     else:
-        st.info("ℹ️ Nenhuma coluna de data encontrada para gerar gráfico temporal.")
+        st.info("ℹ️ Nenhum registro temporal disponível para plotar.")
+else:
+    st.info("ℹ️ Nenhuma coluna de data encontrada na base para gerar gráfico temporal.")
